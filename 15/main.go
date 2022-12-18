@@ -107,6 +107,24 @@ func part1(net *SensorNetwork, row int) []*FillBlock {
 	return retBlocks
 }
 
+func part2(net *SensorNetwork) int {
+	for y := 0; y < 4000000; y++ {
+		row := part1(net, y)
+		if len(row) > 1 {
+			x, y := 0, y
+			if row[0].start < row[1].start {
+				// In order
+				x = row[0].stop + 1
+			} else {
+				x = row[1].stop + 1
+			}
+			return (x * 4000000) + y
+		}
+	}
+
+	return -1
+}
+
 func mergeBlocks(blocks []*FillBlock) []*FillBlock {
 	mergeBlock := blocks[0]
 	blocks[0].merged = true
@@ -173,5 +191,8 @@ func main() {
 			}
 		}
 	}
+
 	fmt.Printf("Part 1: %d\n", count)
+
+	fmt.Printf("Part 2: %d\n", part2(&net))
 }
