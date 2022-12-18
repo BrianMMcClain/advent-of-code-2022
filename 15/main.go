@@ -17,7 +17,7 @@ type Beacon struct {
 type Sensor struct {
 	x        int
 	y        int
-	beacon   Beacon
+	beacon   *Beacon
 	distance int
 }
 
@@ -26,12 +26,11 @@ type SensorNetwork struct {
 	beacons []Beacon
 }
 
-const (
-	EMPTY   = 0
-	SENSOR  = 1
-	BEACON  = 2
-	VISITED = 3
-)
+type FillBlock struct {
+	start  int
+	stop   int
+	merged bool
+}
 
 func readInput(path string) []string {
 	ret := []string{}
@@ -64,10 +63,20 @@ func parseInput(input []string) SensorNetwork {
 		beacon.y, _ = strconv.Atoi(parsed[4])
 
 		sensor.distance = distance(sensor.x, sensor.y, beacon.x, beacon.y)
-		sensor.beacon = beacon
+		sensor.beacon = &beacon
 
 		net.sensors = append(net.sensors, sensor)
-		net.beacons = append(net.beacons, beacon)
+
+		// Don't double-add beacons
+		addBeacon := true
+		for _, b := range net.beacons {
+			if beacon.x == b.x && beacon.y == b.y {
+				addBeacon = false
+			}
+		}
+		if addBeacon {
+			net.beacons = append(net.beacons, beacon)
+		}
 	}
 
 	return net
@@ -77,37 +86,91 @@ func abs(v int) int {
 	return int(math.Abs(float64(v)))
 }
 
-func part1(net *SensorNetwork, row int) map[int]int {
-	filledRow := map[int]int{}
+func part1(net *SensorNetwork, row int) []*FillBlock {
+	blocks := []*FillBlock{}
 	for _, s := range net.sensors {
 		if s.distance >= abs(s.y-row) {
 			// Line between beacon and sensor intersects with the row of interest
 			fillWidth := s.distance - abs(s.y-row)
-			for x := s.x - fillWidth; x <= s.x+fillWidth; x++ {
-				filledRow[x] = VISITED
-			}
+			b := FillBlock{s.x - fillWidth, s.x + fillWidth, false}
+			blocks = append(blocks, &b)
 		}
 
+		// Include the sensor if it's on the row as it may not be visited
 		if s.y == row {
-			filledRow[s.x] = SENSOR
-		}
-		if s.beacon.y == row {
-			filledRow[s.beacon.x] = BEACON
+			blocks = append(blocks, &FillBlock{s.x, s.x, false})
 		}
 	}
 
-	return filledRow
+	retBlocks := mergeBlocks(blocks)
+
+	return retBlocks
+}
+
+func mergeBlocks(blocks []*FillBlock) []*FillBlock {
+	mergeBlock := blocks[0]
+	blocks[0].merged = true
+
+	anyMerge := false
+	mergePerformed := true
+	for mergePerformed {
+		mergePerformed = false
+		for bi, b := range blocks[1:] {
+			lMerge, rMerge, fMerge := false, false, false
+			if !b.merged && b.start <= mergeBlock.start && b.stop >= mergeBlock.start-1 {
+				// Overlap to the left
+				mergeBlock.start = b.start
+				lMerge = true
+				mergePerformed = true
+				anyMerge = true
+			}
+			if !b.merged && b.start <= mergeBlock.stop+1 && b.stop >= mergeBlock.stop {
+				// Overlap to the right
+				mergeBlock.stop = b.stop
+				rMerge = true
+				mergePerformed = true
+				anyMerge = true
+			}
+			if !b.merged && b.start >= mergeBlock.start && b.stop <= mergeBlock.stop {
+				fMerge = true
+				mergePerformed = true
+				anyMerge = true
+			}
+
+			if lMerge || rMerge || fMerge {
+				blocks[bi+1].merged = true
+			}
+		}
+	}
+
+	unmergedBlocks := []*FillBlock{}
+	for _, b := range blocks {
+		if !b.merged {
+			unmergedBlocks = append(unmergedBlocks, b)
+		}
+	}
+
+	if !anyMerge || len(unmergedBlocks) <= 1 {
+		return append(unmergedBlocks, mergeBlock)
+	} else {
+		return append(mergeBlocks(unmergedBlocks), mergeBlock)
+	}
 }
 
 func main() {
 	input := readInput("./input.txt")
 	net := parseInput(input)
 
-	p1row := part1(&net, 2000000)
+	row := 2000000
+	p1Blocks := part1(&net, row)
+
 	count := 0
-	for _, v := range p1row {
-		if v != BEACON {
-			count++
+	for _, b := range p1Blocks {
+		count += b.stop - b.start + 1
+		for _, beacon := range net.beacons {
+			if beacon.y == row && b.start <= beacon.x && b.stop >= beacon.x {
+				count--
+			}
 		}
 	}
 	fmt.Printf("Part 1: %d\n", count)
